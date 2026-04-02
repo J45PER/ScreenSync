@@ -210,7 +210,7 @@ def main():
     elif cfg["device_screens"]:
         screen_names = cfg["device_screens"]
     else:
-        print("ERROR: No screen specified. Use --screen or set device_screens in the web UI.")
+        print("ERROR: No screen specified. Use --screen or set device_screens in the manager app.")
         return
 
     print(f"ScreenSync starting — screens: {screen_names}")

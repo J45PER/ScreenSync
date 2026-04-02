@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=ScreenSync Manager
+Comment=Manage slideshow images and screen settings
+Exec=python3 /home/pi/ScreenSync/manager.py
+Icon=preferences-desktop-display
+Terminal=false
+Type=Application
+Categories=Utility;

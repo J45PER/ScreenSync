@@ -4,7 +4,7 @@ Time-synchronised multi-screen slideshow for Raspberry Pi. All devices sync to N
 
 ## Features
 
-- **Web UI** at `http://<pi-ip>:5000` for uploading images and configuring screens
+- **Desktop manager app** — click the icon to upload images and configure screens
 - **Flexible screens** — start with Left/Right, add more screen names as needed
 - **Multi-monitor** — one Pi can drive multiple screens (splits the display into strips)
 - **Multi-device** — each Pi independently syncs to the same time-based schedule
@@ -19,30 +19,33 @@ With the default 6 slots and 20s duration:
 | **Even** (0, 2, 4…) | Image 00 | Image 01 | Image 02 |
 | **Odd**  (1, 3, 5…) | Image 03 | Image 04 | Image 05 |
 
-All timing settings are adjustable via the web UI.
+All timing settings are adjustable in the manager app.
 
 ## Setup
 
 On each Pi:
 
 ```bash
-git clone <this-repo> ~/ScreenSync
-cd ~/ScreenSync
+cd /home/pi
+git clone https://github.com/j45per/screensync.git ScreenSync
+cd ScreenSync
+git checkout claude/sync-pi-slideshows-uyEN4
 chmod +x install.sh
 ./install.sh
 ```
 
-The installer sets up NTP, installs Python/Pygame/Flask, and creates two systemd services:
-- `screensync-web` — the config/upload web UI (port 5000)
-- `screensync` — the slideshow player
+The installer:
+1. Enables NTP time sync
+2. Installs Python 3, Pygame, and Pillow
+3. Creates a systemd service for the slideshow
+4. Adds a **ScreenSync Manager** icon to your desktop
 
 ## Usage
 
-1. Start the web UI: `sudo systemctl start screensync-web`
-2. Open `http://<pi-ip>:5000` in a browser
-3. Set the screen names (e.g. Left, Right) and tick which screen(s) this device drives
-4. Upload images into each slot
-5. Start the slideshow from the web UI or run `sudo systemctl start screensync`
+1. Double-click the **ScreenSync Manager** icon on the desktop (or run `python3 manager.py`)
+2. Set screen names (e.g. Left, Right) and tick which screen(s) this device drives
+3. Upload images into each slot using the file picker
+4. Click **Start Slideshow**
 
 Press **Escape** to exit the slideshow.
 
@@ -56,4 +59,4 @@ python3 slideshow.py --screen Left --windowed
 
 - **Out of sync?** Check NTP: `timedatectl status`
 - **Black screen?** Check images: `ls images/`
-- **Logs:** `journalctl -u screensync -f` or `journalctl -u screensync-web -f`
+- **Logs:** `journalctl -u screensync -f`

@@ -3,6 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CURRENT_USER="$(whoami)"
 
 echo "=== ScreenSync Installer ==="
 
@@ -15,9 +16,9 @@ timedatectl show --property=NTPSynchronized --value
 # Install dependencies
 echo "[2/4] Installing dependencies..."
 sudo apt-get update -qq
-sudo apt-get install -y -qq python3 python3-pygame python3-flask
+sudo apt-get install -y -qq python3 python3-pygame python3-pil python3-pil.imagetk
 
-# Create images directory if missing
+# Create images directory
 mkdir -p "$SCRIPT_DIR/images"
 
 # Create slideshow systemd service
@@ -26,12 +27,12 @@ echo "[3/4] Installing slideshow service..."
 cat <<EOF | sudo tee /etc/systemd/system/screensync.service > /dev/null
 [Unit]
 Description=ScreenSync Slideshow
-After=network-online.target time-sync.target screensync-web.service
+After=network-online.target time-sync.target
 Wants=network-online.target time-sync.target
 
 [Service]
 Type=simple
-User=$(whoami)
+User=${CURRENT_USER}
 Environment=DISPLAY=:0
 WorkingDirectory=${SCRIPT_DIR}
 ExecStart=/usr/bin/python3 ${SCRIPT_DIR}/slideshow.py
@@ -42,37 +43,28 @@ RestartSec=5
 WantedBy=graphical.target
 EOF
 
-# Create web UI systemd service
-echo "[4/4] Installing web UI service..."
-
-cat <<EOF | sudo tee /etc/systemd/system/screensync-web.service > /dev/null
-[Unit]
-Description=ScreenSync Web UI
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=$(whoami)
-WorkingDirectory=${SCRIPT_DIR}
-ExecStart=/usr/bin/python3 ${SCRIPT_DIR}/web_ui.py
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
 sudo systemctl daemon-reload
-sudo systemctl enable screensync-web.service
+
+# Install desktop shortcut
+echo "[4/4] Installing desktop shortcut..."
+
+DESKTOP_FILE="${SCRIPT_DIR}/screensync.desktop"
+# Update Exec path to match actual install location
+sed -i "s|Exec=.*|Exec=python3 ${SCRIPT_DIR}/manager.py|" "$DESKTOP_FILE"
+
+# Copy to desktop and applications menu
+DESKTOP_DIR="/home/${CURRENT_USER}/Desktop"
+APPS_DIR="/home/${CURRENT_USER}/.local/share/applications"
+mkdir -p "$DESKTOP_DIR" "$APPS_DIR"
+cp "$DESKTOP_FILE" "$DESKTOP_DIR/screensync.desktop"
+cp "$DESKTOP_FILE" "$APPS_DIR/screensync.desktop"
+chmod +x "$DESKTOP_DIR/screensync.desktop"
 
 echo ""
 echo "=== Done! ==="
 echo ""
-echo "Web UI:  http://$(hostname -I | awk '{print $1}'):5000"
-echo "         Use the web UI to upload images and configure screens."
+echo "A 'ScreenSync Manager' icon has been added to your desktop."
+echo "Use it to upload images and configure which screen this Pi drives."
 echo ""
-echo "The slideshow service reads config.json (managed by the web UI)."
-echo "Start the web UI:    sudo systemctl start screensync-web"
-echo "Start the slideshow: sudo systemctl start screensync"
-echo "View logs:           journalctl -u screensync -f"
+echo "Or run from terminal:  python3 ${SCRIPT_DIR}/manager.py"
+echo "Slideshow logs:        journalctl -u screensync -f"
