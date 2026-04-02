@@ -1,31 +1,25 @@
 # ScreenSync
 
-Time-synchronised dual-screen slideshow for two Raspberry Pi 3s. Both Pis sync to NTP internet time so they stay in perfect lockstep with no direct communication between them.
+Time-synchronised multi-screen slideshow for Raspberry Pi. All devices sync to NTP internet time so they stay in perfect lockstep with no direct communication between them.
 
-## How it works
+## Features
 
-| Minute type | Seconds 0-19 | Seconds 20-39 | Seconds 40-59 |
-|-------------|-------------|---------------|---------------|
+- **Web UI** at `http://<pi-ip>:5000` for uploading images and configuring screens
+- **Flexible screens** — start with Left/Right, add more screen names as needed
+- **Multi-monitor** — one Pi can drive multiple screens (splits the display into strips)
+- **Multi-device** — each Pi independently syncs to the same time-based schedule
+- **Crossfade transitions** between slides
+
+## Schedule
+
+With the default 6 slots and 20s duration:
+
+| Minute type | 0–19s | 20–39s | 40–59s |
+|-------------|-------|--------|--------|
 | **Even** (0, 2, 4…) | Image 00 | Image 01 | Image 02 |
 | **Odd**  (1, 3, 5…) | Image 03 | Image 04 | Image 05 |
 
-Each image displays for 20 seconds with a 1-second crossfade transition. The cycle repeats every 2 minutes.
-
-## Image naming
-
-Place images in the `images/` folder:
-
-```
-images/
-  00. Left.png    00. Right.png
-  01. Left.png    01. Right.png
-  02. Left.png    02. Right.png
-  03. Left.png    03. Right.png
-  04. Left.png    04. Right.png
-  05. Left.png    05. Right.png
-```
-
-Any image format supported by Pygame works (PNG, JPG, BMP, etc.). Images are automatically scaled to fill the screen.
+All timing settings are adjustable via the web UI.
 
 ## Setup
 
@@ -38,25 +32,28 @@ chmod +x install.sh
 ./install.sh
 ```
 
-The installer will:
-1. Enable NTP time sync
-2. Install Python 3 and Pygame
-3. Create a systemd service (asks whether this Pi is `left` or `right`)
+The installer sets up NTP, installs Python/Pygame/Flask, and creates two systemd services:
+- `screensync-web` — the config/upload web UI (port 5000)
+- `screensync` — the slideshow player
 
-## Running
+## Usage
+
+1. Start the web UI: `sudo systemctl start screensync-web`
+2. Open `http://<pi-ip>:5000` in a browser
+3. Set the screen names (e.g. Left, Right) and tick which screen(s) this device drives
+4. Upload images into each slot
+5. Start the slideshow from the web UI or run `sudo systemctl start screensync`
+
+Press **Escape** to exit the slideshow.
+
+## Manual testing
 
 ```bash
-# As a service (auto-starts on boot)
-sudo systemctl start screensync
-
-# Or manually for testing (windowed mode)
-python3 slideshow.py --screen left --windowed
+python3 slideshow.py --screen Left --windowed
 ```
-
-Press **Escape** to exit.
 
 ## Troubleshooting
 
-- **Out of sync?** Check both Pis have NTP working: `timedatectl status`
-- **Black screen?** Check images exist: `ls images/`
-- **View logs:** `journalctl -u screensync -f`
+- **Out of sync?** Check NTP: `timedatectl status`
+- **Black screen?** Check images: `ls images/`
+- **Logs:** `journalctl -u screensync -f` or `journalctl -u screensync-web -f`
