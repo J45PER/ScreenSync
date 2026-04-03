@@ -82,36 +82,44 @@ def build_schedule(total_slots: int, slide_duration: int):
     return even, odd, half
 
 
-def get_current_slide_index(even_slots, odd_slots, slide_duration):
-    """Return the image index to display right now."""
+def get_current_slide_state(even_slots, odd_slots, slide_duration, fade_duration):
+    """
+    Determine the current and next slide based on system time.
+
+    The fade happens in the LAST fade_duration seconds of each slot, so
+    the new image is fully visible exactly when the next slot begins.
+
+    Returns (current_index, next_index, fade_alpha).
+      - fade_alpha = 0   → show current image only (no fade)
+      - fade_alpha = 1-255 → blending from current into next
+    """
     now = time.time()
     sec_in_minute = now % 60
     minute = int(now // 60)
     is_even = (minute % 2 == 0)
 
     slide_set = even_slots if is_even else odd_slots
+    next_slide_set = odd_slots if is_even else even_slots
+
     slot = min(int(sec_in_minute // slide_duration), len(slide_set) - 1)
-    slide_id = (minute, slot)
-    return slide_set[slot], slide_id
+    sec_into_slot = sec_in_minute - (slot * slide_duration)
+    fade_start = slide_duration - fade_duration
 
+    current_index = slide_set[slot]
+    fade_alpha = 0
 
-def crossfade(screen_surf, old_img, new_img, duration, fps=30):
-    clock = pygame.time.Clock()
-    steps = max(int(duration * fps), 1)
-    for i in range(1, steps + 1):
-        alpha = int(255 * i / steps)
-        screen_surf.blit(old_img, (0, 0))
-        new_img.set_alpha(alpha)
-        screen_surf.blit(new_img, (0, 0))
-        new_img.set_alpha(255)
-        pygame.display.flip()
-        clock.tick(fps)
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT or (
-                event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE
-            ):
-                return False
-    return True
+    # Work out the next slide index
+    if slot + 1 < len(slide_set):
+        next_index = slide_set[slot + 1]
+    else:
+        next_index = next_slide_set[0]
+
+    # Are we in the fade zone (last fade_duration seconds of this slot)?
+    if sec_into_slot >= fade_start and fade_duration > 0:
+        progress = (sec_into_slot - fade_start) / fade_duration
+        fade_alpha = min(int(progress * 255), 255)
+
+    return current_index, next_index, fade_alpha
 
 
 # ---------------------------------------------------------------------------
@@ -130,8 +138,6 @@ class ScreenPlayer:
         self.slide_duration = slide_duration
         self.fade_duration = fade_duration
         self.cache = {}
-        self.current_id = None
-        self.current_surface = None
 
     def preload(self):
         for idx in self.even_slots + self.odd_slots:
@@ -156,27 +162,19 @@ class ScreenPlayer:
         return self.cache[idx]
 
     def update(self):
-        """Check time and update display. Returns False if user quit during fade."""
-        idx, slide_id = get_current_slide_index(
-            self.even_slots, self.odd_slots, self.slide_duration
+        """Render the correct frame based on current time. Non-blocking."""
+        current_idx, next_idx, fade_alpha = get_current_slide_state(
+            self.even_slots, self.odd_slots, self.slide_duration, self.fade_duration
         )
-        new_surface = self.get_surface(idx)
 
-        if self.current_id is None:
-            # First frame
-            self.surface.blit(new_surface, (0, 0))
-            self.current_surface = new_surface
-            self.current_id = slide_id
-            return True
+        current_surf = self.get_surface(current_idx)
+        self.surface.blit(current_surf, (0, 0))
 
-        if slide_id != self.current_id:
-            if not crossfade(self.surface, self.current_surface, new_surface,
-                             self.fade_duration):
-                return False
-            self.current_surface = new_surface
-            self.current_id = slide_id
-        else:
-            self.surface.blit(new_surface, (0, 0))
+        if fade_alpha > 0:
+            next_surf = self.get_surface(next_idx)
+            next_surf.set_alpha(fade_alpha)
+            self.surface.blit(next_surf, (0, 0))
+            next_surf.set_alpha(255)
 
         return True
 
@@ -234,15 +232,17 @@ def main():
         clock = pygame.time.Clock()
         running = True
         while running:
-            if not player.update():
-                break
+            player.update()
             pygame.display.flip()
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     running = False
-            clock.tick(10)
+            # Higher FPS during fades for smooth blending, lower when static
+            _, _, alpha = get_current_slide_state(even_slots, odd_slots,
+                                                  slide_duration, fade_duration)
+            clock.tick(30 if alpha > 0 else 5)
 
     else:
         # Multi-screen on one device: split the display into equal vertical strips
@@ -268,16 +268,16 @@ def main():
         running = True
         while running:
             for p in players:
-                if not p.update():
-                    running = False
-                    break
+                p.update()
             pygame.display.flip()
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     running = False
-            clock.tick(10)
+            _, _, alpha = get_current_slide_state(even_slots, odd_slots,
+                                                  slide_duration, fade_duration)
+            clock.tick(30 if alpha > 0 else 5)
 
     pygame.quit()
 
