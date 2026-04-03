@@ -1,4 +1,5 @@
 __pycache__/
 *.pyc
-images/
+images/*
+!images/.gitkeep
 config.json
