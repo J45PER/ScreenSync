@@ -33,6 +33,24 @@ DEFAULT_CONFIG = {
     "slide_duration": 20,
     "fade_duration": 1.0,
     "slots": 6,
+    "display_rotation": 0,   # 0, 90, -90 (270), or 180
+}
+
+# Pi /boot/config.txt rotation values
+ROTATION_OPTIONS = {
+    "Normal (0)": 0,
+    "90 CW": 90,
+    "90 CCW (-90)": -90,
+    "180 (upside down)": 180,
+}
+
+# Maps our degrees to display_rotate values for /boot/config.txt
+ROTATION_TO_CONFIG = {
+    0: 0,
+    90: 1,
+    180: 2,
+    -90: 3,
+    270: 3,
 }
 
 
@@ -220,10 +238,27 @@ class ScreenSyncApp:
 
         # Slots
         col4 = ttk.Frame(row1, style="Card.TFrame")
-        col4.pack(side="left")
+        col4.pack(side="left", padx=(0, 12))
         ttk.Label(col4, text="SLOTS", style="Muted.TLabel").pack(anchor="w")
         self.slots_var = tk.StringVar(value=str(self.cfg["slots"]))
         ttk.Entry(col4, textvariable=self.slots_var, width=6).pack(pady=(4, 0))
+
+        # Display rotation
+        col5 = ttk.Frame(row1, style="Card.TFrame")
+        col5.pack(side="left")
+        ttk.Label(col5, text="DISPLAY ROTATION", style="Muted.TLabel").pack(anchor="w")
+        current_rot = self.cfg.get("display_rotation", 0)
+        # Find the label matching the current rotation value
+        rot_label = "Normal (0)"
+        for label, val in ROTATION_OPTIONS.items():
+            if val == current_rot:
+                rot_label = label
+                break
+        self.rotation_var = tk.StringVar(value=rot_label)
+        rot_menu = ttk.Combobox(col5, textvariable=self.rotation_var,
+                                values=list(ROTATION_OPTIONS.keys()),
+                                state="readonly", width=16)
+        rot_menu.pack(pady=(4, 0))
 
         # Device screens checkboxes
         row2 = ttk.Frame(card, style="Card.TFrame")
@@ -373,16 +408,24 @@ class ScreenSyncApp:
 
         device_screens = [name for name, var in self.device_screen_vars.items() if var.get()]
 
+        rotation = ROTATION_OPTIONS.get(self.rotation_var.get(), 0)
+        old_rotation = self.cfg.get("display_rotation", 0)
+
         self.cfg["screens"] = screens
         self.cfg["device_screens"] = device_screens
         self.cfg["slide_duration"] = duration
         self.cfg["fade_duration"] = fade
         self.cfg["slots"] = slots
+        self.cfg["display_rotation"] = rotation
         save_config(self.cfg)
 
         self._rebuild_device_checkboxes()
         self._refresh_grid()
-        messagebox.showinfo("Saved", "Settings saved to config.json")
+
+        if rotation != old_rotation:
+            self._apply_rotation(rotation)
+        else:
+            messagebox.showinfo("Saved", "Settings saved to config.json")
 
     def _upload(self, slot: int, screen_name: str):
         path = filedialog.askopenfilename(
@@ -410,6 +453,55 @@ class ScreenSyncApp:
         if messagebox.askyesno("Confirm", f"Delete image for slot {slot:02d} – {screen_name}?"):
             clear_slot_image(slot, screen_name)
             self._refresh_grid()
+
+    def _apply_rotation(self, degrees: int):
+        """Write display_rotate to /boot/config.txt and prompt for reboot."""
+        config_val = ROTATION_TO_CONFIG.get(degrees, 0)
+        boot_config = "/boot/config.txt"
+
+        try:
+            with open(boot_config, "r") as f:
+                lines = f.readlines()
+        except PermissionError:
+            # Need sudo to read — fall back to subprocess
+            result = subprocess.run(["sudo", "cat", boot_config],
+                                    capture_output=True, text=True)
+            if result.returncode != 0:
+                messagebox.showerror("Error", f"Cannot read {boot_config}")
+                return
+            lines = result.stdout.splitlines(keepends=True)
+
+        # Update or add display_rotate line
+        found = False
+        new_lines = []
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("display_rotate=") or stripped.startswith("#display_rotate="):
+                new_lines.append(f"display_rotate={config_val}\n")
+                found = True
+            else:
+                new_lines.append(line)
+        if not found:
+            new_lines.append(f"\ndisplay_rotate={config_val}\n")
+
+        # Write via sudo tee
+        content = "".join(new_lines)
+        proc = subprocess.run(
+            ["sudo", "tee", boot_config],
+            input=content, text=True,
+            capture_output=True,
+        )
+        if proc.returncode != 0:
+            messagebox.showerror("Error", f"Failed to write {boot_config}:\n{proc.stderr}")
+            return
+
+        msg = (f"Settings saved. Display rotation set to {degrees} degrees.\n\n"
+               f"A reboot is required for the rotation to take effect.\n\n"
+               f"Reboot now?")
+        if messagebox.askyesno("Reboot Required", msg):
+            subprocess.run(["sudo", "reboot"])
+        else:
+            messagebox.showinfo("Saved", "Settings saved. Reboot when ready to apply rotation.")
 
     def _start_slideshow(self):
         try:
