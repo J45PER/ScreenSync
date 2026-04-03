@@ -138,6 +138,8 @@ class ScreenPlayer:
         self.slide_duration = slide_duration
         self.fade_duration = fade_duration
         self.cache = {}
+        self.blend_surface = pygame.Surface(self.size)
+        self.blend_surface.set_alpha(0)
 
     def preload(self):
         for idx in self.even_slots + self.odd_slots:
@@ -172,9 +174,9 @@ class ScreenPlayer:
 
         if fade_alpha > 0:
             next_surf = self.get_surface(next_idx)
-            next_surf.set_alpha(fade_alpha)
-            self.surface.blit(next_surf, (0, 0))
-            next_surf.set_alpha(255)
+            self.blend_surface.blit(next_surf, (0, 0))
+            self.blend_surface.set_alpha(fade_alpha)
+            self.surface.blit(self.blend_surface, (0, 0))
 
         return True
 
